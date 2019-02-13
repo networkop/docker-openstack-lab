@@ -1,0 +1,2 @@
+docker ps -a | awk '{ print $1,$2 }' | grep openstack | awk '{print $1 }' | xargs -I {} docker rm -f {}
+docker ps -a | awk '{ print $1,$10 }' | grep os | awk '{print $1 }' | xargs -I {} docker rm -f {}
