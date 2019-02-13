@@ -27,7 +27,7 @@ ip addr
 
 NETWORK_BOOTSTRAP="""
 - echo $IPADDR $HOSTNAME >> /etc/hosts
-- ip link add dev br-ex type bridge
+- hostnamectl set-hostname $HOSTNAME
 """
 
 
@@ -54,17 +54,10 @@ ethernets:
     gateway4: $GW
     mtu: 1280
     nameservers:
-        addresses: [1.1.1.1]
+        addresses: [ 1.1.1.1 ]
   ens3:
     addresses: [ 0.0.0.0 ]
     mtu: 1280
-bridges:
-  br-ex:
-    interfaces: [ ens3 ]
-    addresses: [ 0.0.0.0 ]
-    parameters:
-      stp: false
-      forward-delay: 0
 """
 
 
@@ -84,7 +77,7 @@ NETWORK_INTERFACES="""|
 """
 
 RUN_COMMANDS="""
-- sed -i 's/HOST_IP=.*/HOST_IP=$IPADDR/ /home/stack/devstack/local.conf'
+- sed -i 's/HOST_IP=.*/HOST_IP=$IPADDR/ /opt/stack/devstack/local.conf'
 """
 
 echo '#####################################'
