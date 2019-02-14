@@ -28,6 +28,7 @@ ip addr
 NETWORK_BOOTSTRAP="""
 - echo $IPADDR $HOSTNAME >> /etc/hosts
 - hostnamectl set-hostname $HOSTNAME
+- ip link add dev br-vlan type bridge
 """
 
 
@@ -58,6 +59,13 @@ ethernets:
   ens3:
     addresses: [ 0.0.0.0 ]
     mtu: 1280
+bridges:
+  br-vlan:
+    interfaces: [ ens3 ]
+    addresses: [ 0.0.0.0 ]
+    parameters:
+      stp: false
+      forward-delay: 0
 """
 
 

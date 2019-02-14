@@ -1,0 +1,12 @@
+export IP="docker inspect \$device --format '{{with index .NetworkSettings.Networks \"os_net-0\"}}{{.IPAddress }}{{end}}'"
+for d in os-1 os-2 veos-1 veos-2 veos-3
+do
+  device="os_$d"
+  ip=$(eval $IP)
+  if [[ $d == *"veos"* ]]; then
+    user="admin"
+  else
+    user="ubuntu"
+  fi
+  alias $d="ssh $user@$ip"
+done
