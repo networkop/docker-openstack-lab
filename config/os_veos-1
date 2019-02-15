@@ -1,0 +1,48 @@
+!
+cvx
+   no shutdown
+   !
+   service openstack
+      no shutdown
+      !
+      region RegionOne
+         username admin tenant admin secret nomoresecret
+         keystone auth-url http://169.254.0.10/identity/v3/
+!
+hostname vEOS-1
+ip host vEOS-1 169.254.0.1
+ip host vEOS-2 169.254.0.2
+ip host vEOS-3 169.254.0.3
+!
+spanning-tree mode mstp
+spanning-tree mst 0 priority 0
+!
+no aaa root
+!
+username admin privilege 15 role network-admin secret admin
+!
+vlan 10
+!
+interface Ethernet1
+   switchport mode trunk
+!
+interface Ethernet2
+   switchport mode trunk
+!
+interface Management1
+   no lldp transmit
+   no lldp receive
+!
+interface Vlan10
+   ip address 169.254.0.1/16
+!
+ip routing
+!
+management api http-commands
+   protocol http
+   no shutdown
+!
+management cvx
+   no shutdown
+   server host 169.254.0.1
+!

@@ -1,0 +1,34 @@
+!
+hostname vEOS-2
+!
+spanning-tree mode mstp
+!
+no aaa root
+!
+username admin privilege 15 role network-admin secret admin
+!
+vlan 10
+!
+interface Ethernet1
+   switchport mode trunk
+!
+interface Ethernet2
+   switchport mode trunk
+!
+interface Management1
+   no lldp transmit
+   no lldp receive
+!
+interface Vlan10
+   ip address 169.254.0.2/16
+!
+ip routing
+!
+management api http-commands
+   protocol http
+   no shutdown
+!
+management cvx
+   no shutdown
+   server host 169.254.0.1
+!
