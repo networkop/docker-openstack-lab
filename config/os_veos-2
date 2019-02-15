@@ -6,6 +6,7 @@ spanning-tree mode mstp
 no aaa root
 !
 username admin privilege 15 role network-admin secret admin
+aaa authorization exec default local
 !
 vlan 10
 !

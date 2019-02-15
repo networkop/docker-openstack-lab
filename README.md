@@ -1,5 +1,16 @@
 # Virtual Arista+Openstack lab
 
+## Table of contents
+1. [Building Ubuntu VM containers](#1-building-ubuntu-vm-containers)
+2. [Creating the virtual lab](#2-creating-the-virtual-lab)
+3. [Arista integration](#3-arista-integration)
+4. [Basic L2 Demo](#4-basic-l2-demo)
+5. [Cleanup](#5-cleanup)
+6. [L3 plugin](#6-l3-plugin)
+7. [VLAN-VNI mapping](#7-vlan-vni-mapping)
+8. [VXLAN with HPB](#8-vxlan-with-hpb)
+9. [Troubleshooting](#troubleshooting)
+
 ## Prerequisites
 
 Linux Docker host with 7GB (mini demo) or 20GB (full demo) of RAM, enabled nested virutalisation (/dev/kvm and `grep vmx /proc/cpuinfo`) and a generated SSH key (ssh-keygen)
@@ -110,7 +121,8 @@ docker-topo --create mini.yml
 ```
 
 > Sometimes there's no internet access from inside the containers, to turn it on do:
-   ```docker network inspect os_net-0 --format '{{range .IPAM.Config }}{{.Subnet}}{{ end }}'
+   ```
+   docker network inspect os_net-0 --format '{{range .IPAM.Config }}{{.Subnet}}{{ end }}'
    sudo iptables -t nat -A POSTROUTING -s  172.31.0.0/16 -j MASQUERADE
    ```
 
@@ -481,11 +493,309 @@ $
 
 ## 7. VLAN-VNI mapping
 
+### 7.1 Arista configuration
+
+On CVX:
+
+```
+cvx
+   service openstack
+      region RegionOne
+         networks map vlan 10 - 40 vni 5010 - 5040
+   !
+   service vxlan
+      no shutdown
+!
+interface Loopback99
+   ip address 169.254.0.1/32
+!
+```
+
+On all vEOS devices create a VXLAN loopback and configure VXLAN service. Interfaces MUST be converted to L3 otherwise a loop will occur.
+
+```
+interface loopback0
+  ip address 10.10.10.1/32
+!
+no interface Vlan10
+!
+interface Ethernet1
+  no switchport
+  ip address 169.254.12.1/24
+!
+interface Ethernet2
+  no switchport
+  ip address 169.254.13.1/24
+!
+interface vxlan 1
+  vxlan source-interface loopback0
+  vxlan controller-client
+!
+router ospf 1
+network 10.10.10.0/24 area 0.0.0.0
+network 169.254.0.0/16 area 0.0.0.0
+!
+```
+
+> OSPF is used to establish L3 reachability between Loopbacks over the pre-existing VLAN10
+
+### 7.2 Neutron configuration
+
+> We only need to update the CVX/vEOS-1 IP address (pointing to Management IP)
+
+```
+sudo grep _host /etc/neutron/plugins/ml2/ml2_conf.ini 
+eapi_host=172.20.0.2
+primary_l3_host=172.20.0.4
+```
+
+restart Neutron:
+
+```
+sudo systemctl restart devstack@q-svc.service
+```
+### 7.3 Simpe L2 demo
+
+Create a new network:
+
+```
+openstack network create --provider-network-type vlan \
+                         --provider-physical-network provider \
+                         --provider-segment 11 \
+                         net-1
+openstack subnet create --subnet-range 10.0.0.0/24 \
+                        --network net-1 \
+                        sub-1
+```
+
+Create a couple of VMs on different compute nodes
+
+```
+openstack server create --flavor cirros256 \
+                        --image cirros-0.3.5-x86_64-disk \
+                        --network net-1  \
+                        --availability-zone nova:os-1:os-1 \
+                        VM-1
+openstack server create --flavor cirros256 \
+                        --image cirros-0.3.5-x86_64-disk \
+                        --network net-1  \
+                        --availability-zone nova:os-2:os-2 \
+                        VM-2
+```
+
+### 7.4 Verification
+
+Confirm VXLAN-VNI mapping
+
+```
+vEOS-3#show vxlan vni
+VNI to VLAN Mapping for Vxlan1
+VNI        VLAN       Source       Interface       802.1Q Tag 
+---------- ---------- ------------ --------------- ---------- 
+5011       11*        vcs          Ethernet2       11     
+```
+
+Check that MAC tables contains all 3 MACs (VM-1, VM-2 and  DHCP)
+
+```
+vEOS-3#show vxlan address-table 
+          Vxlan Mac Address Table
+----------------------------------------------------------------------
+
+VLAN  Mac Address     Type     Prt  VTEP             Moves   Last Move
+----  -----------     ----     ---  ----             -----   ---------
+  11  26b7.df10.a340  RECEIVED  Vx1  10.10.10.2       1       0:01:01 ago
+  11  fa16.3e33.4766  RECEIVED  Vx1  10.10.10.2       1       0:00:45 ago
+  11  fa16.3e92.cee9  RECEIVED  Vx1  10.10.10.2       1       0:01:01 ago
+```
+
+Console into VM-1 and ping VM-2
+
+```
+openstack console url show VM-1
+```
+
+### 7.5 Adding L3 router
+
+Note that L3 router is now setup on vEOS-3 (172.20.0.4), since vEOS-1 doesn't know anything about VXLAN-VNI mappings
+
+```
+openstack router create router-1
+openstack router add subnet router-1 sub-1
+```
+
+### 7.6 Verification
+
+Check the SVI is created
+
+```
+vEOS-1# sh run int vlan 11
+interface Vlan11
+   ip address 10.0.0.1/24
+```
+
+Ping VM-1 and SSH into VM-2
+
+```
+vEOS-3#ping  10.0.0.7
+PING 10.0.0.7 (10.0.0.7) 72(100) bytes of data.
+80 bytes from 10.0.0.7: icmp_seq=1 ttl=64 time=20.0 ms
+80 bytes from 10.0.0.7: icmp_seq=2 ttl=64 time=24.0 ms
+80 bytes from 10.0.0.7: icmp_seq=3 ttl=64 time=20.0 ms
+80 bytes from 10.0.0.7: icmp_seq=4 ttl=64 time=24.0 ms
+80 bytes from 10.0.0.7: icmp_seq=5 ttl=64 time=20.0 ms
+
+--- 10.0.0.7 ping statistics ---
+5 packets transmitted, 5 received, 0% packet loss, time 76ms
+rtt min/avg/max/mdev = 20.001/21.601/24.002/1.964 ms, pipe 2, ipg/ewma 19.001/20.774 ms
+vEOS-3#ssh -l cirros 10.0.0.6
+Warning: Permanently added '10.0.0.6' (RSA) to the list of known hosts.
+cirros@10.0.0.6's password: 
+$ 
+$ 
+```
+
 ## 8. VXLAN with HPB
 
-## Troubleshooting
+Same as VLAN-VNI mapping but allows for VLAN re-use per TOR, so max network scale is 4094 * number of racks
 
-Neutron logs
+## 9. Troubleshooting
+
+
+### 9.1 Openstack side
+
+
+Neutron server logs
 ```
 journalctl -f -u devstack@q-svc.service
+```
+
+L2 agent logs:
+
+```
+journalctl -f -u devstack@q-agt.service
+```
+
+Check logs for sync messages
+
+```
+journalctl -xe -u devstack@q-svc.service | grep EOS
+```
+
+
+Neutron port -> Linux interface -> Linux bridge mapping
+
+```
+ubuntu@os-1:~$ openstack port list | grep 10.0.0.6
+| f8e48f8a-348c-4c4a-b68f-f18afcc9b4b6 |      | fa:16:3e:33:47:66 | ip_address='10.0.0.6', subnet_id='103a846d-ee19-42d7-ad79-22b7ed279c2c' | ACTIVE |
+ubuntu@os-1:~$ ip link | grep f8e48f8a-34
+59: tapf8e48f8a-34: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1500 qdisc pfifo_fast master brq514ceff9-f8 state UNKNOWN mode DEFAULT group default qlen 1000
+ubuntu@os-1:~$ brctl show brq514ceff9-f8
+bridge name	bridge id		STP enabled	interfaces
+brq514ceff9-f8		8000.26b7df10a340	no		br-vlan.11
+							tap1b54c022-76
+							tap594cb928-f6
+							tapf8e48f8a-34
+```
+
+tcpdump on bridge/tap/vlan port
+
+```
+ubuntu@os-1:~$ sudo tcpdump -i br-vlan.11 icmp
+tcpdump: verbose output suppressed, use -v or -vv for full protocol decode
+listening on br-vlan.11, link-type EN10MB (Ethernet), capture size 262144 bytes
+15:05:41.664773 IP 10.0.0.1 > 10.0.0.2: ICMP echo request, id 12801, seq 1, length 80
+15:05:41.664967 IP 10.0.0.2 > 10.0.0.1: ICMP echo reply, id 12801, seq 1, length 80
+```
+
+IPtables 
+
+```
+ubuntu@os-1:~$ sudo iptables -L -n -v
+< snip >
+Chain FORWARD (policy ACCEPT 165 packets, 15840 bytes)
+ pkts bytes target     prot opt in     out     source               destination         
+13029 2817K neutron-filter-top  all  --  *      *       0.0.0.0/0            0.0.0.0/0           
+13029 2817K neutron-linuxbri-FORWARD  all  --  *      *       0.0.0.0/0            0.0.0.0/0  
+< snip >
+Chain neutron-linuxbri-FORWARD (1 references)
+ pkts bytes target     prot opt in     out     source               destination         
+  183 18592 ACCEPT     all  --  *      *       0.0.0.0/0            0.0.0.0/0            PHYSDEV match --physdev-out tap594cb928-f6 --physdev-is-bridged /* Accept all packets when port is trusted. */
+ 2090  208K ACCEPT     all  --  *      *       0.0.0.0/0            0.0.0.0/0            PHYSDEV match --physdev-out tap1b54c022-76 --physdev-is-bridged /* Accept all packets when port is trusted. */
+ 2332  230K neutron-linuxbri-sg-chain  all  --  *      *       0.0.0.0/0            0.0.0.0/0            PHYSDEV match --physdev-out tapf8e48f8a-34 --physdev-is-bridged /* Direct traffic from the VM interface to the security group chain. */
+  202 21924 neutron-linuxbri-sg-chain  all  --  *      *       0.0.0.0/0            0.0.0.0/0            PHYSDEV match --physdev-in tapf8e48f8a-34 --physdev-is-bridged /* Direct traffic from the VM interface to the security group chain. */
+< snip >
+Chain neutron-linuxbri-sg-chain (2 references)
+ pkts bytes target     prot opt in     out     source               destination         
+ 2332  230K neutron-linuxbri-if8e48f8a-3  all  --  *      *       0.0.0.0/0            0.0.0.0/0            PHYSDEV match --physdev-out tapf8e48f8a-34 --physdev-is-bridged /* Jump to the VM specific chain. */
+  202 21924 neutron-linuxbri-of8e48f8a-3  all  --  *      *       0.0.0.0/0            0.0.0.0/0            PHYSDEV match --physdev-in tapf8e48f8a-34 --physdev-is-bridged /* Jump to the VM specific chain. */
+ 3261  321K ACCEPT     all  --  *      *       0.0.0.0/0            0.0.0.0/0        
+< snip >
+Chain neutron-linuxbri-if8e48f8a-3 (1 references)
+ pkts bytes target     prot opt in     out     source               destination         
+ 2297  227K RETURN     all  --  *      *       0.0.0.0/0            0.0.0.0/0            state RELATED,ESTABLISHED /* Direct packets associated with a known session to the RETURN chain. */
+    2   695 RETURN     udp  --  *      *       0.0.0.0/0            10.0.0.6             udp spt:67 dpt:68
+    0     0 RETURN     udp  --  *      *       0.0.0.0/0            255.255.255.255      udp spt:67 dpt:68
+   17  1684 RETURN     icmp --  *      *       0.0.0.0/0            0.0.0.0/0           
+   14   760 RETURN     tcp  --  *      *       0.0.0.0/0            0.0.0.0/0            tcp dpt:22
+    0     0 RETURN     tcp  --  *      *       0.0.0.0/0            0.0.0.0/0           
+    0     0 RETURN     all  --  *      *       0.0.0.0/0            0.0.0.0/0            match-set NIPv4f4ce0525-94f5-4a40-9581- src
+    0     0 DROP       all  --  *      *       0.0.0.0/0            0.0.0.0/0            state INVALID /* Drop packets that appear related to an existing connection (e.g. TCP ACK/FIN) but do not have an entry in conntrack. */
+    2   648 neutron-linuxbri-sg-fallback  all  --  *      *       0.0.0.0/0            0.0.0.0/0            /* Send unmatched traffic to the fallback chain. */
+
+< snip >
+Chain neutron-linuxbri-sg-fallback (2 references)
+ pkts bytes target     prot opt in     out     source               destination         
+ 1285  413K DROP       all  --  *      *       0.0.0.0/0            0.0.0.0/0            /* Default drop rule for unmatched traffic. */
+```
+
+The last rule is the default drop-all, so if traffic is not going through due to IPTables - the `pkts` counter should increase. For example, delete the ICMP allow rule:
+
+```
+buntu@os-1:~$ openstack security group rule list  | grep icmp
+| 23915fa5-8cea-4fb3-ba08-0166acc17693 | icmp        | 0.0.0.0/0 |            | None                                 | f4ce0525-94f5-4a40-9581-fa7dabda86b4 |
+ubuntu@os-1:~$ openstack security group rule  delete 23915fa5-8cea-4fb3-ba08-0166acc17693
+```
+
+Start the ping from Arista towards one of the VMs
+
+```
+vEOS-3#ping 10.0.0.7 timeout 1 repeat 1000
+PING 10.0.0.7 (10.0.0.7) 72(100) bytes of data.
+```
+
+On the node where VM is sitting start watching the DROP counter
+
+```
+watch -n 0.5 "sudo iptables -L -n -v | grep \"Default drop\""
+```
+
+### 9.2 Arista side 
+
+CVX management service (from all switches)
+
+```
+vEOS-1#show management cvx |  i Status
+  Status: Enabled
+```
+
+CVX VXLAN controller service (from CVX)
+
+```
+vEOS-1#show service vxlan status | i Service
+Vxlan Controller Service is   : running
+```
+
+CVX VXLAN controller service (from TOR switches )
+
+```
+vEOS-2#sh vxlan controller status | grep status
+Controller connection status        : Established
+```
+
+CVX openstack service
+
+```
+vEOS-1#show openstack regions  | i Status
+Sync Status: Completed
 ```
