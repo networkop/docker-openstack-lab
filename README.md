@@ -9,7 +9,7 @@
 6. [L3 plugin](#6-l3-plugin)
 7. [VLAN-VNI mapping](#7-vlan-vni-mapping)
 8. [VXLAN with HPB](#8-vxlan-with-hpb)
-9. [Troubleshooting](#troubleshooting)
+9. [Troubleshooting](#9-troubleshooting)
 
 ## Prerequisites
 
