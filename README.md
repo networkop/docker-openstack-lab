@@ -239,7 +239,7 @@ Adding VLAN interface to access CVX inband
 ```
 sudo ip link add link br-vlan name vlan10 type vlan id 10
 sudo ip addr add dev vlan10 169.254.0.10/16
-sudo ip addr add dev vlan10 169.254.0.10/16
+sudo ip link set dev vlan10 up
 ```
 
 Restart neutron server
