@@ -1,4 +1,6 @@
-# Virtual Arista+Openstack lab
+# Virtual Arista+Openstack demo lab
+
+![lab topologies](./os.png)
 
 ## Table of contents
 1. [Building Ubuntu VM containers](#1-building-ubuntu-vm-containers)
