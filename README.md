@@ -657,7 +657,80 @@ $
 
 ## 8. VXLAN with HPB
 
-Same as VLAN-VNI mapping but allows for VLAN re-use per TOR, so max network scale is 4094 * number of racks
+### 8.1 Neutron configuration
+
+
+Add VLAN ranges for each TOR 
+
+```
+sudo sed -ri 's/^(network_vlan_ranges.*)/\1,vEOS-2:100:200,vEOS-3:300:400/' /etc/neutron/plugins/ml2/ml2_conf.ini 
+grep mechanism_driver /etc/neutron/plugins/ml2/ml2_conf.ini
+```
+
+Add network <-> Linuxbridge mappings (os-1)
+```
+sudo sed -ri 's/^(physical_interface_mappings = ).*/\1vEOS-2:br-vlan/' /etc/neutron/plugins/ml2/ml2_conf.ini 
+grep physical_interface_mappings /etc/neutron/plugins/ml2/ml2_conf.ini
+sudo systemctl restart devstack@q-agt.service
+sudo systemctl status devstack@q-agt.service |  grep Active
+```
+
+Add network <-> Linuxbridge mappings (os-2)
+```
+sudo sed -ri 's/^(physical_interface_mappings = ).*/\1vEOS-2:br-vlan/' /etc/neutron/plugins/ml2/ml2_conf.ini 
+grep physical_interface_mappings /etc/neutron/plugins/ml2/ml2_conf.ini
+sudo systemctl restart devstack@q-agt.service
+sudo systemctl status devstack@q-agt.service |  grep Active
+```
+
+Turn off VXLAN and Enable HPB
+
+```
+sudo sed -ri 's/^(enable_vxlan =).*/\1 False/' /etc/neutron/plugins/ml2/ml2_conf.ini 
+echo "[ml2_arista]" >> /etc/neutron/plugins/ml2/ml2_conf.ini
+echo "manage_fabric = True" >> /etc/neutron/plugins/ml2/ml2_conf.ini
+```
+
+Create bridge mappings on all compute nodes
+
+```
+sudo sed -ri 's/^(physical_interface_mappings.*)/\1,vEOS-1:br-vlan,vEOS-2:br-vlan/' /etc/neutron/plugins/ml2/ml2_conf.ini 
+grep physical_interface_mappings /etc/neutron/plugins/ml2/ml2_conf.ini
+```
+
+Restart Neutron server process
+
+```
+sudo systemctl restart devstack@q-svc.service
+sudo systemctl status devstack@q-svc.service | grep Active
+```
+
+### 9.4 Simpe L2 demo
+
+Create a new network:
+
+```
+openstack network create net-1
+openstack subnet create --subnet-range 10.0.0.0/24 \
+                        --network net-1 \
+                        sub-1
+```
+
+Create a couple of VMs on different compute nodes
+
+```
+openstack server create --flavor cirros256 \
+                        --image cirros-0.3.5-x86_64-disk \
+                        --network net-1  \
+                        --availability-zone nova:os-1:os-1 \
+                        VM-1
+openstack server create --flavor cirros256 \
+                        --image cirros-0.3.5-x86_64-disk \
+                        --network net-1  \
+                        --availability-zone nova:os-2:os-2 \
+                        VM-2
+```
+
 
 ## 9. Troubleshooting
 
