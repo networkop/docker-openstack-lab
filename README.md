@@ -761,8 +761,10 @@ Neutron port -> Linux interface -> Linux bridge mapping
 ```
 ubuntu@os-1:~$ openstack port list | grep 10.0.0.6
 | f8e48f8a-348c-4c4a-b68f-f18afcc9b4b6 |      | fa:16:3e:33:47:66 | ip_address='10.0.0.6', subnet_id='103a846d-ee19-42d7-ad79-22b7ed279c2c' | ACTIVE |
+
 ubuntu@os-1:~$ ip link | grep f8e48f8a-34
 59: tapf8e48f8a-34: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1500 qdisc pfifo_fast master brq514ceff9-f8 state UNKNOWN mode DEFAULT group default qlen 1000
+
 ubuntu@os-1:~$ brctl show brq514ceff9-f8
 bridge name	bridge id		STP enabled	interfaces
 brq514ceff9-f8		8000.26b7df10a340	no		br-vlan.11
@@ -845,18 +847,33 @@ watch -n 0.5 "sudo iptables -L -n -v | grep \"Default drop\""
 
 ### 9.2 Arista side 
 
-CVX management service (from all switches)
+CVX management service (for all switches)
 
 ```
-vEOS-1#show management cvx |  i Status
-  Status: Enabled
+vEOS-1#show cvx connections | i name|State
+  Hostname: vEOS-1
+  State: established
+  Hostname: vEOS-2
+  State: established
+  Hostname: vEOS-3
+  State: established
 ```
+
+
 
 CVX VXLAN controller service (from CVX)
 
 ```
-vEOS-1#show service vxlan status | i Service
-Vxlan Controller Service is   : running
+vEOS-1#show  cvx service vxlan
+Vxlan
+  Status: Enabled
+  Supported versions: 2
+
+  Switch            Status  Negotiated Version 
+  ----------------- ------- ------------------ 
+  52:54:00:6c:29:2e Enabled 2                  
+  52:54:00:1f:23:ce Enabled 2                  
+  52:54:00:ef:a3:12 Enabled 2                  
 ```
 
 CVX VXLAN controller service (from TOR switches )
