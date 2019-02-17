@@ -20,6 +20,7 @@ Linux Docker host with 7GB (mini demo) or 20GB (full demo) of RAM, enabled neste
 Required packages:
 * git
 * [docker-topo](https://github.com/networkop/docker-topo)
+* [vEOS docker image](https://github.com/networkop/docker-topo/tree/master/topo-extra-files/veos)
 
 ## 1. Building Ubuntu VM containers
 
