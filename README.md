@@ -73,6 +73,8 @@ disable_service cinder
 
 Q_AGENT=linuxbridge
 Q_USE_SECGROUP=True
+Q_ML2_TENANT_NETWORK_TYPE=vlan
+Q_ML2_PLUGIN_MECHANISM_DRIVERS=linuxbridge
 ENABLE_TENANT_VLANS=True
 ML2_VLAN_RANGES=provider:10:40
 LB_INTERFACE_MAPPINGS=provider:br-vlan
@@ -318,10 +320,7 @@ Unique Id            Hostname
 
 Create a private network:
 ```
-openstack network create --provider-network-type vlan \
-                         --provider-physical-network provider \
-                         --provider-segment 11 \
-                         net-1
+openstack network create net-1
 openstack subnet create --subnet-range 10.0.0.0/24 \
                         --network net-1 \
                         sub-1
@@ -381,6 +380,8 @@ openstack security group rule create --ingress --proto icmp  f4ce0525-94f5-4a40-
 On vEOS-1 create a default gateway for external network:
 
 ```
+!
+vlan 40
 !
 interface Vlan40
    ip address 40.0.0.1/24
@@ -453,10 +454,7 @@ sudo systemctl restart devstack@q-svc
 
 Configure Subnet, Router and a VM
 ```
-openstack network create --provider-network-type vlan \
-                         --provider-physical-network provider \
-                         --provider-segment 11 \
-                         net-1
+openstack network create net-1
 openstack subnet create --subnet-range 10.0.0.0/24 \
                         --network net-1 \
                         sub-1
@@ -562,10 +560,7 @@ sudo systemctl restart devstack@q-svc.service
 Create a new network:
 
 ```
-openstack network create --provider-network-type vlan \
-                         --provider-physical-network provider \
-                         --provider-segment 11 \
-                         net-1
+openstack network create net-1
 openstack subnet create --subnet-range 10.0.0.0/24 \
                         --network net-1 \
                         sub-1
