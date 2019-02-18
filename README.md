@@ -71,10 +71,12 @@ disable_service horizon
 disable_service swift
 disable_service cinder
 
+
 Q_AGENT=linuxbridge
+
 Q_USE_SECGROUP=True
 Q_ML2_TENANT_NETWORK_TYPE=vlan
-Q_ML2_PLUGIN_MECHANISM_DRIVERS=linuxbridge
+Q_ML2_PLUGIN_MECHANISM_DRIVERS=$Q_AGENT
 ENABLE_TENANT_VLANS=True
 ML2_VLAN_RANGES=provider:10:40
 LB_INTERFACE_MAPPINGS=provider:br-vlan
